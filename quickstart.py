@@ -9,14 +9,18 @@ from google.auth.transport.requests import Request
 import base64
 from apiclient import errors
 
-
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 
 def main():
-    """Shows basic usage of the Gmail API.
-    Lists the user's Gmail labels.
+    """
+    Based on examples from: https://developers.google.com/gmail/api/quickstart/python
+    Shows basic usage of the Gmail API.
+    Find all unread messages with label "frame"
+    Download any attachments to these messages
+    mark the message as read by removing label "UNREAD"
+    archive message by removing label "INBOX"
     """
 
     service = build('gmail', 'v1', credentials=login())
@@ -79,19 +83,23 @@ def get_messages(service, label=None):
     """
 
     if label is None:
-        results = service.users().messages().list(userId='me').execute()
+        label = ['UNREAD']
     else:
-        results = service.users().messages().list(userId='me', labelIds=label).execute()
+        label = [label, 'UNREAD']
+
+    results = service.users().messages().list(userId='me', labelIds=label).execute()
 
     messages = results.get('messages', [])
 
     if not messages:
-        print('No messages found.')
+        print('No unread messages found.')
     else:
-        print('Messages:')
+        print('Found', len(messages), 'Unread Message(s)')
         for message in messages:
             get_message_content(service, message['id'])
+            mark_message_read(service, message['id'])
             pass
+    pass
 
 
 def get_message_content(service, msg_id):
@@ -112,37 +120,36 @@ def get_message_content(service, msg_id):
                     data = part['body']['data']
                 else:
                     att_id = part['body']['attachmentId']
-                    att = service.users().messages().attachments().get(userId=uid, messageId=msg_id, id=att_id).execute()
+                    att = service. \
+                        users(). \
+                        messages(). \
+                        attachments().get(userId=uid, messageId=msg_id, id=att_id).execute()
                     data = att['data']
                 file_data = base64.urlsafe_b64decode(data.encode('UTF-8'))
                 path = part['filename']
-
+                print("Save File:", path)
                 with open(path, 'wb') as f:
                     f.write(file_data)
 
-        # We now need to mark the message as read.
-
-        pass
     except errors.HttpError as error:
         print('An error occurred: %s' % error)
 
 
-def old_get_message_content(service, messageid):
+def mark_message_read(service, msg_id):
+    # We now need to mark the message as read.
 
-    results = service.users().messages().get(userId='me', id=messageid).execute()
+    uid = 'me'
 
-    # should really check for errors.
-    print("From: ", results['payload']['headers'][16]['value'])
-    print("Filename: ", results['payload']['parts'][1]['filename'])
-    filename = results['payload']['parts'][1]['filename']
-    bodyID = results['payload']['parts'][1]['body']['attachmentId']
-    print("Body ID ", bodyID)
+    message = service. \
+        users(). \
+        messages(). \
+        modify(userId=uid, id=msg_id, body={'removeLabelIds': ['UNREAD', 'INBOX']}).execute()
+    # need to check that the UNREAD label has been removed.
 
-    results = service.users().messages().attachments().get(userId='me', messageId=messageid, id=bodyID).execute()
-    s = results['data']
-    file_data = base64.urlsafe_b64decode(s.encode('UTF-8'))
-    with open(filename, 'wb') as f:
-        f.write(file_data)
+    if 'UNREAD' in message['labelIds']:
+        print("Something went wrong, label UNREAD still there")
+    else:
+        print("Message", msg_id, "marked as Read")
 
     pass
 

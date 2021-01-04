@@ -87,17 +87,21 @@ def get_messages(service, label=None):
     else:
         label = [label, 'UNREAD']
 
-    results = service.users().messages().list(userId='me', labelIds=label).execute()
+    messages = []
+    results = service.users().messages().list(userId='me', labelIds=label, pageToken=None).execute()
+    messages.extend(results.get('messages', []))
 
-    messages = results.get('messages', [])
+    while results.get('nextPageToken'):
+        results = service.users().messages().list(userId='me', labelIds=label, pageToken=results.get('nextPageToken')).execute()
+        messages.extend(results.get('messages', []))
 
     if not messages:
         print('No unread messages found.')
     else:
         print('Found', len(messages), 'Unread Message(s)')
         for message in messages:
-            get_message_content(service, message['id'])
-            mark_message_read(service, message['id'])
+            # get_message_content(service, message['id'])
+            # mark_message_read(service, message['id'])
             pass
     pass
 

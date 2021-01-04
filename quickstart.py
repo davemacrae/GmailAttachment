@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 from __future__ import print_function
 import pickle
 import os.path
@@ -9,7 +11,7 @@ from apiclient import errors
 
 
 # If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
 
 
 def main():
@@ -29,22 +31,23 @@ def login():
     # created automatically when the authorization flow completes for the first
     # time.
 
-    creds = None
+    gmail_creds = None
+
     if os.path.exists('token.pickle'):
         with open('token.pickle', 'rb') as token:
-            creds = pickle.load(token)
+            gmail_creds = pickle.load(token)
     # If there are no (valid) credentials available, let the user log in.
-    if not creds or not creds.valid:
-        if creds and creds.expired and creds.refresh_token:
-            creds.refresh(Request())
+    if not gmail_creds or not gmail_creds.valid:
+        if gmail_creds and gmail_creds.expired and gmail_creds.refresh_token:
+            gmail_creds.refresh(Request())
         else:
             flow = InstalledAppFlow.from_client_secrets_file(
                 'credentials.json', SCOPES)
-            creds = flow.run_local_server(port=0)
+            gmail_creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
         with open('token.pickle', 'wb') as token:
-            pickle.dump(creds, token)
-    return creds
+            pickle.dump(gmail_creds, token)
+    return gmail_creds
 
 
 def get_labels(service, want=None):

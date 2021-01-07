@@ -40,7 +40,7 @@ def main():
     service = build('gmail', 'v1', credentials=login())
     labelID = get_labels(service, labelName=label)
 
-    messages = get_messages(service, labelID, no_messages=program_args.count)
+    messages = get_messages(service, labelID, no_messages=program_args.limit)
 
     if not messages:
         print('No unread messages found.')
@@ -108,7 +108,7 @@ def get_labels(service, labelName=None):
     return labelId
 
 
-def get_messages(service, label=None, no_messages=None):
+def get_messages(service, label=None, no_messages=sys.maxsize):
     """
     We want to get a list of all messages (defined by a specific label if required)
     We should also only get unread messages.
@@ -145,7 +145,7 @@ def get_messages(service, label=None, no_messages=None):
         if program_args.verbosity:
             print("Retrieve a maximum of {count} messages from GMAIL")
 
-        # Need to make sure that we can retrieve 'count' number of messages if 'count' != None.
+        # Need to make sure that we can retrieve 'limit' number of messages if 'limit' != None.
 
         results = service. \
             users(). \
@@ -260,8 +260,8 @@ def getargs():
 
     parser.add_argument('--output', '-o', type=str, help='Specify the target directory for downloads')
     parser.add_argument('--label', type=str, help='Specify the target directory for downloads')
-    parser.add_argument('--limit', '-l', type=int, help='limit the number of attachments downloaded')
-    parser.add_argument('--count', '-c', type=int, help='Calculate number of available messages and exit')
+    parser.add_argument('--limit', '-l', type=int, help='limit the number of attachments downloaded', default=sys.maxsize)
+    parser.add_argument('--count', '-c', action='store_true', help='Just calculate number of available messages and exit')
     parser.add_argument('--delete', '-d', action='store_true', help='Delete messages at GMAIL rather than just archive')
     parser.add_argument('--verbosity', '-v', action='store_true', help="Verbose output")
 

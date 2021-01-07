@@ -9,9 +9,12 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 import base64
 from apiclient import errors
+import argparse
 
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+
+global program_args
 
 
 def main():
@@ -24,19 +27,28 @@ def main():
     archive message by removing label "INBOX"
     """
 
+    # get any command line arguments
+
+    global program_args
+    program_args = getargs()
+
+    outputDir = program_args.output if program_args.output else '.'
+    label = program_args.label if program_args.label else 'frame'
+    outputDir = outputDir + '/'
+
     # TODO: What is the correct error handling here
     service = build('gmail', 'v1', credentials=login())
-    labelID = get_labels(service, labelName='frame')
+    labelID = get_labels(service, labelName=label)
 
-    messages = get_messages(service, labelID)
+    messages = get_messages(service, labelID, no_messages=program_args.count)
 
     if not messages:
         print('No unread messages found.')
     else:
         print('Found', len(messages), 'Unread Message(s)')
         for message in messages:
-            get_message_content(service, message['id'])
-            mark_message_read(service, message['id'])
+            get_message_content(service, message['id'], outputDir)
+            # mark_message_read(service, message['id'])
             pass
 
 
@@ -83,7 +95,7 @@ def get_labels(service, labelName=None):
     try:
         results = service.users().labels().list(userId='me').execute()
         labels = results.get('labels', [])
-    except errors.HttpError as error:   # this is probably not the best solution
+    except errors.HttpError as error:  # this is probably not the best solution
         print('An error occurred: %s' % error)
 
     if not labels:
@@ -96,15 +108,17 @@ def get_labels(service, labelName=None):
     return labelId
 
 
-def get_messages(service, label=None):
+def get_messages(service, label=None, no_messages=None):
     """
     We want to get a list of all messages (defined by a specific label if required)
     We should also only get unread messages.
 
     :param service: Authorized Gmail API service instance.
     :param label: the label that tags the messages we're interested in
+    :param no_messages: limit the number of messages retrieved to count
 
     """
+    global program_args
 
     # Even if label is not specified, we want to only retrieve UNREAD messages
     # If "label" is not defined then we will retrieve all unread messages from the mailbox.
@@ -128,38 +142,49 @@ def get_messages(service, label=None):
             The call that retrieves that last block will not have this set.
         """
         # get the initial set of messages (if any)
-        results = service.\
-            users().\
-            messages().\
-            list(userId='me', labelIds=label, pageToken=None).execute()
-        messages.extend(results.get('messages', []))
+        if program_args.verbosity:
+            print("Retrieve a maximum of {count} messages from GMAIL")
 
-        while results.get('nextPageToken'):
+        # Need to make sure that we can retrieve 'count' number of messages if 'count' != None.
+
+        results = service. \
+            users(). \
+            messages(). \
+            list(userId='me', labelIds=label, pageToken=None, maxResults=no_messages).execute()
+
+        messages.extend(results.get('messages', []))
+        no_messages = no_messages - len(results.get('messages', []))
+
+        while results.get('nextPageToken') and no_messages > 0:
             # if nextPageToken is set then there are more messages to retrieve.
-            results = service.\
-                users().\
-                messages().\
-                list(userId='me', labelIds=label, pageToken=results.get('nextPageToken')).execute()
+            results = service. \
+                users(). \
+                messages(). \
+                list(userId='me', labelIds=label, pageToken=results.get('nextPageToken'), maxResults=no_messages).\
+                execute()
             # extend the message list to include the new ones retrieved.
             messages.extend(results.get('messages', []))
+            no_messages = no_messages - len(results.get('messages', []))
 
-    except errors.HttpError as error:   # this is probably not the best solution
+    except errors.HttpError as error:  # this is probably not the best solution
         print('An error occurred: %s' % error)
+        sys.exit(1)
 
     return messages
 
 
-def get_message_content(service, msg_id):
+def get_message_content(service, msg_id, outputDir='./'):
     """
     Get and store attachment from Message with given id.
 
     :param service: Authorized Gmail API service instance.
     :param msg_id: ID of Message containing attachment.
+    :param outputDir:Directory for output
     """
 
+    global program_args
+
     uid = 'me'
-    # TODO: Should probably make this an arg
-    outputDir = 'output/'
 
     try:
         message = service.users().messages().get(userId=uid, id=msg_id).execute()
@@ -183,7 +208,8 @@ def get_message_content(service, msg_id):
                 # we should do a basename on the filename to just get the bit we need.
 
                 path = outputDir + os.path.basename(part['filename'])
-                print("Save File:", path)
+                if program_args.verbosity:
+                    print("Save File:", path)
                 try:
                     with open(path, 'wb') as f:
                         f.write(file_data)
@@ -195,7 +221,7 @@ def get_message_content(service, msg_id):
                     raise
 
     except errors.HttpError as error:
-        print('An error occurred: %s' % error)
+        print('An error occurred in get_message_content: %s' % error)
 
 
 def mark_message_read(service, msg_id):
@@ -229,12 +255,38 @@ def mark_message_read(service, msg_id):
     pass
 
 
+def getargs():
+    parser = argparse.ArgumentParser(description='This application downloads attachments from a GMAIL account')
+
+    parser.add_argument('--output', '-o', type=str, help='Specify the target directory for downloads')
+    parser.add_argument('--label', type=str, help='Specify the target directory for downloads')
+    parser.add_argument('--limit', '-l', type=int, help='limit the number of attachments downloaded')
+    parser.add_argument('--count', '-c', type=int, help='Calculate number of available messages and exit')
+    parser.add_argument('--delete', '-d', action='store_true', help='Delete messages at GMAIL rather than just archive')
+    parser.add_argument('--verbosity', '-v', action='store_true', help="Verbose output")
+
+    args = parser.parse_args()
+
+    # If "--output" is used and
+    # the selected output directory is an directory
+    # and the directory is writable
+    if args.output \
+            and not os.path.isdir(args.output) \
+            and os.access(args.output, os.W_OK | os.X_OK):
+        parser.error(f"Specified Output directory '{args.output}' does not exists")
+
+    return args
+
+
 if __name__ == '__main__':
     # TODO: Need to have some kind of argument parsing
     #   output folder
     #   verbosity level
     #   do we want to limit the number of files
     #   do we want to overwrite existing files
+    #   do we want to delete the read messages rather than just archiving them
+    #   do we want an option to flag what label we want to use for the attachments
+
     try:
         main()
     except KeyboardInterrupt:

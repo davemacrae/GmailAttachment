@@ -36,7 +36,6 @@ def main():
     label = program_args.label if program_args.label else 'frame'
     outputDir = outputDir + '/'
 
-    # TODO: What is the correct error handling here
     service = build('gmail', 'v1', credentials=login())
     labelID = get_labels(service, labelName=label)
 
@@ -48,7 +47,10 @@ def main():
         print('Found', len(messages), 'Unread Message(s)')
         for message in messages:
             get_message_content(service, message['id'], outputDir)
-            # mark_message_read(service, message['id'])
+            if program_args.delete:
+                delete_message(service, message['id'])
+            else:
+                mark_message_read(service, message['id'])
             pass
 
 
@@ -56,6 +58,8 @@ def login():
     # The file token.pickle stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
+
+    # TODO: What is the correct error handling here
 
     gmail_creds = None
 
@@ -95,8 +99,9 @@ def get_labels(service, labelName=None):
     try:
         results = service.users().labels().list(userId='me').execute()
         labels = results.get('labels', [])
-    except errors.HttpError as error:  # this is probably not the best solution
+    except errors.HttpError as error:
         print('An error occurred: %s' % error)
+        sys.exit(1)
 
     if not labels:
         print('No labels found.')
@@ -122,27 +127,26 @@ def get_messages(service, label=None, no_messages=sys.maxsize):
 
     # Even if label is not specified, we want to only retrieve UNREAD messages
     # If "label" is not defined then we will retrieve all unread messages from the mailbox.
-    # TODO: need to determine if we want to retrieve all UNREAD messages (which is the current behavior) or just
+    # Implemented: need to determine if we want to retrieve all UNREAD messages (which is the current behavior) or just
     #  those that haven't been archived.
     #  i.e. do we need to make INBOX part of the label list.
 
     if label is None:
-        label = ['UNREAD']
+        label = ['UNREAD', 'INBOX'] if program_args.unread else ['UNREAD']
     else:
-        label = [label, 'UNREAD']
+        label = [label, 'UNREAD', 'INBOX'] if program_args.unread else ['UNREAD']
 
     messages = []
 
     try:
         """
-            Loop through the messages in the GMAIL inbox. 
-            Gmail returns a maximum of 100 messages in a call with nextPageToken set to indicate
-            that there are more messages.
+        Loop through the messages in the GMAIL inbox. Gmail, by default, returns a maximum of 100 messages in a 
+        call with nextPageToken set to indicate that there are more messages. (Note that if the maxResults parameter 
+        is used, the lesser of maxResults and 500 messages are returned). 
             
-            The call that retrieves that last block will not have this set.
-        """
+        The call that retrieves that last block will not have this set. """
         # get the initial set of messages (if any)
-        if program_args.verbosity:
+        if program_args.verbose:
             print("Retrieve a maximum of {count} messages from GMAIL")
 
         # Need to make sure that we can retrieve 'limit' number of messages if 'limit' != None.
@@ -208,9 +212,15 @@ def get_message_content(service, msg_id, outputDir='./'):
                 # we should do a basename on the filename to just get the bit we need.
 
                 path = outputDir + os.path.basename(part['filename'])
-                if program_args.verbosity:
+                if program_args.verbose:
                     print("Save File:", path)
                 try:
+                    if program_args.noclobber:
+                        # check if we should not overwrite
+                        if os.path.exists(path):
+                            if program_args.verbose:
+                                print("Not overwriting {path}")
+                                continue
                     with open(path, 'wb') as f:
                         f.write(file_data)
                 except OSError as err:
@@ -222,6 +232,7 @@ def get_message_content(service, msg_id, outputDir='./'):
 
     except errors.HttpError as error:
         print('An error occurred in get_message_content: %s' % error)
+        sys.exit(1)
 
 
 def mark_message_read(service, msg_id):
@@ -255,15 +266,48 @@ def mark_message_read(service, msg_id):
     pass
 
 
+def delete_message(service, msg_id):
+    """
+    We now need to delete the message
+
+    :param service: Authorized Gmail API service instance.
+    :param msg_id: ID of message to be altered
+    """
+    uid = 'me'
+    message = None
+
+    try:
+        message = service. \
+            users(). \
+            messages(). \
+            delete(userId=uid, id=msg_id).execute()
+    except errors.HttpError as error:
+        print('An error occurred: %s' % error)
+
+    # need to check that the UNREAD label has been removed.
+
+    pass
+
+
 def getargs():
     parser = argparse.ArgumentParser(description='This application downloads attachments from a GMAIL account')
 
-    parser.add_argument('--output', '-o', type=str, help='Specify the target directory for downloads')
-    parser.add_argument('--label', type=str, help='Specify the target directory for downloads')
-    parser.add_argument('--limit', '-l', type=int, help='limit the number of attachments downloaded', default=sys.maxsize)
-    parser.add_argument('--count', '-c', action='store_true', help='Just calculate number of available messages and exit')
-    parser.add_argument('--delete', '-d', action='store_true', help='Delete messages at GMAIL rather than just archive')
-    parser.add_argument('--verbosity', '-v', action='store_true', help="Verbose output")
+    parser.add_argument('--output', '-o', type=str,
+                        help='Specify the target directory for downloads')
+    parser.add_argument('--label', type=str,
+                        help='Specify the target label for getting messages')
+    parser.add_argument('--limit', '-l', type=int, default=sys.maxsize,
+                        help='limit the number of attachments downloaded')
+    parser.add_argument('--count', '-c', action='store_true',
+                        help='Just calculate number of available messages and exit')
+    parser.add_argument('--delete', '-d', action='store_true',
+                        help='Delete messages at GMAIL rather than just archive')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help="Verbose output")
+    parser.add_argument('--unread', '-u', action='store_true',
+                        help='Only get unread messages from inbox, default is to get all, even if archived)')
+    parser.add_argument('--noclobber', action='store_true',
+                        help="Don't overwrite existing files")
 
     args = parser.parse_args()
 
@@ -279,13 +323,16 @@ def getargs():
 
 
 if __name__ == '__main__':
-    # TODO: Need to have some kind of argument parsing
+    # TODO:
     #   output folder
-    #   verbosity level
-    #   do we want to limit the number of files
     #   do we want to overwrite existing files
     #   do we want to delete the read messages rather than just archiving them
     #   do we want an option to flag what label we want to use for the attachments
+    #
+    # DONE:
+    #   Need to have some kind of argument parsing
+    #   verbose level
+    #   do we want to limit the number of messages retrieved
 
     try:
         main()
@@ -296,3 +343,4 @@ if __name__ == '__main__':
         except SystemExit:
             # noinspection PyProtectedMember
             os._exit(1)
+    sys.exit(0)

@@ -5,6 +5,7 @@ First follow API enable instructions at https://developers.google.com/gmail/api/
 
 You will need to get an API key prior to first running the application.
 
+```
 usage: get_attachment.py [-h] [--output OUTPUT] [--label LABEL]
                          [--limit LIMIT] [--count] [--delete] [--verbose]
                          [--unread] [--noclobber]
@@ -24,5 +25,5 @@ optional arguments:
   --unread, -u          Only get unread messages from inbox, default is to get
                         all, even if archived)
   --noclobber           Don't overwrite existing files
-
+```
 

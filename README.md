@@ -8,8 +8,8 @@ You will need to get an API key prior to first running the application.
 
 ```
 usage: get_attachment.py [-h] [--output OUTPUT] [--label LABEL]
-                         [--limit LIMIT] [--count] [--delete] [--verbose]
-                         [--unread] [--noclobber]
+                         [--limit LIMIT] [--count] [--delete] [--trash]
+                         [--verbose] [--unread] [--noclobber]
 
 This application downloads attachments from a GMAIL account
 
@@ -21,11 +21,14 @@ optional arguments:
   --limit LIMIT, -l LIMIT
                         limit the number of attachments downloaded
   --count, -c           Just calculate number of available messages and exit
-  --delete, -d          Delete messages at GMAIL rather than just archive
+  --delete              Delete messages at GMAIL rather than just archive
+  --trash               Trash messages at GMAIL rather than just archive
   --verbose, -v         Verbose output
   --unread, -u          Only get unread messages from inbox, default is to get
-                        all, even if archived)
+                        all unread even if archived)
   --noclobber           Don't overwrite existing files
+
+
 ```
 
 Still a work in progress.

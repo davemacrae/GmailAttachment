@@ -53,8 +53,12 @@ def main():
             if program_args.delete:
                 delete_message(service, message['id'])
             else:
-                mark_message_read(service, message['id'])
-            pass
+                if program_args.trash:
+                    trash_message(service, message['id'])
+                else:
+                    mark_message_read(service, message['id'])
+
+    return
 
 
 def login():
@@ -158,7 +162,8 @@ def get_messages(service, label=None, no_messages=sys.maxsize):
         results = service. \
             users(). \
             messages(). \
-            list(userId='me', labelIds=label, pageToken=None, maxResults=no_messages).execute()
+            list(userId='me', labelIds=label, pageToken=None, maxResults=no_messages).\
+            execute()
 
         messages.extend(results.get('messages', []))
         no_messages = no_messages - len(results.get('messages', []))
@@ -273,7 +278,8 @@ def mark_message_read(service, msg_id):
 
 def delete_message(service, msg_id):
     """
-    We now need to delete the message
+    We now need to delete the message. Note that this will permanently and irretrievably delete the messages, it
+    can't be recovered.
 
     :param service: Authorized Gmail API service instance.
     :param msg_id: ID of message to be altered
@@ -291,6 +297,26 @@ def delete_message(service, msg_id):
     return
 
 
+def trash_message(service, msg_id):
+    """
+    We now need to move the message to trash
+
+    :param service: Authorized Gmail API service instance.
+    :param msg_id: ID of message to be altered
+    """
+    uid = 'me'
+
+    try:
+        service. \
+            users(). \
+            messages(). \
+            trash(userId=uid, id=msg_id).execute()
+    except errors.HttpError as error:
+        print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
+
+    return
+
+
 def getargs():
     parser = argparse.ArgumentParser(description='This application downloads attachments from a GMAIL account')
 
@@ -302,8 +328,10 @@ def getargs():
                         help='limit the number of attachments downloaded')
     parser.add_argument('--count', '-c', action='store_true',
                         help='Just calculate number of available messages and exit')
-    parser.add_argument('--delete', '-d', action='store_true',
+    parser.add_argument('--delete', action='store_true',
                         help='Delete messages at GMAIL rather than just archive')
+    parser.add_argument('--trash', action='store_true',
+                        help='Trash messages at GMAIL rather than just archive')
     parser.add_argument('--verbose', '-v', action='store_true',
                         help="Verbose output")
     parser.add_argument('--unread', '-u', action='store_true',

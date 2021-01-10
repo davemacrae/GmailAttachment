@@ -10,9 +10,10 @@ from google.auth.transport.requests import Request
 import base64
 from apiclient import errors
 import argparse
+import inspect
 
 # If modifying these scopes, delete the file token.pickle.
-SCOPES = ['https://www.googleapis.com/auth/gmail.modify']
+SCOPES = ['https://mail.google.com/']
 
 global program_args
 
@@ -42,9 +43,11 @@ def main():
     messages = get_messages(service, labelID, no_messages=program_args.limit)
 
     if not messages:
-        print('No unread messages found.')
+        if program_args.verbose:
+            print('No unread messages found.')
     else:
-        print('Found', len(messages), 'Unread Message(s)')
+        if program_args.verbose:
+            print('Found', len(messages), 'Unread Message(s)')
         for message in messages:
             get_message_content(service, message['id'], outputDir)
             if program_args.delete:
@@ -100,11 +103,12 @@ def get_labels(service, labelName=None):
         results = service.users().labels().list(userId='me').execute()
         labels = results.get('labels', [])
     except errors.HttpError as error:
-        print('An error occurred: %s' % error)
+        print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
         sys.exit(1)
 
     if not labels:
-        print('No labels found.')
+        if program_args.verbose:
+            print('No labels found.')
     else:
         for label in labels:
             if label['name'] == labelName:
@@ -147,7 +151,7 @@ def get_messages(service, label=None, no_messages=sys.maxsize):
         The call that retrieves that last block will not have this set. """
         # get the initial set of messages (if any)
         if program_args.verbose:
-            print("Retrieve a maximum of {count} messages from GMAIL")
+            print(f"Retrieve a maximum of {no_messages} messages from GMAIL")
 
         # Need to make sure that we can retrieve 'limit' number of messages if 'limit' != None.
 
@@ -171,7 +175,7 @@ def get_messages(service, label=None, no_messages=sys.maxsize):
             no_messages = no_messages - len(results.get('messages', []))
 
     except errors.HttpError as error:  # this is probably not the best solution
-        print('An error occurred: %s' % error)
+        print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
         sys.exit(1)
 
     return messages
@@ -219,7 +223,7 @@ def get_message_content(service, msg_id, outputDir='./'):
                         # check if we should not overwrite
                         if os.path.exists(path):
                             if program_args.verbose:
-                                print("Not overwriting {path}")
+                                print(f"Not overwriting {path}")
                                 continue
                     with open(path, 'wb') as f:
                         f.write(file_data)
@@ -231,7 +235,7 @@ def get_message_content(service, msg_id, outputDir='./'):
                     raise
 
     except errors.HttpError as error:
-        print('An error occurred in get_message_content: %s' % error)
+        print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
         sys.exit(1)
 
 
@@ -253,7 +257,7 @@ def mark_message_read(service, msg_id):
             messages(). \
             modify(userId=uid, id=msg_id, body={'removeLabelIds': ['UNREAD', 'INBOX']}).execute()
     except errors.HttpError as error:
-        print('An error occurred: %s' % error)
+        print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
 
     # need to check that the UNREAD label has been removed.
 
@@ -261,9 +265,10 @@ def mark_message_read(service, msg_id):
     if 'UNREAD' in labelIDs:
         print("Something went wrong, label UNREAD still there")
     else:
-        print("Message", msg_id, "marked as Read")
+        if program_args.verbose:
+            print(f"Message {msg_id} marked as Read")
 
-    pass
+    return
 
 
 def delete_message(service, msg_id):
@@ -274,19 +279,16 @@ def delete_message(service, msg_id):
     :param msg_id: ID of message to be altered
     """
     uid = 'me'
-    message = None
 
     try:
-        message = service. \
+        service. \
             users(). \
             messages(). \
             delete(userId=uid, id=msg_id).execute()
     except errors.HttpError as error:
-        print('An error occurred: %s' % error)
+        print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
 
-    # need to check that the UNREAD label has been removed.
-
-    pass
+    return
 
 
 def getargs():
@@ -305,7 +307,7 @@ def getargs():
     parser.add_argument('--verbose', '-v', action='store_true',
                         help="Verbose output")
     parser.add_argument('--unread', '-u', action='store_true',
-                        help='Only get unread messages from inbox, default is to get all, even if archived)')
+                        help='Only get unread messages from inbox, default is to get all unread even if archived)')
     parser.add_argument('--noclobber', action='store_true',
                         help="Don't overwrite existing files")
 
@@ -324,15 +326,15 @@ def getargs():
 
 if __name__ == '__main__':
     # TODO:
-    #   output folder
-    #   do we want to overwrite existing files
-    #   do we want to delete the read messages rather than just archiving them
-    #   do we want an option to flag what label we want to use for the attachments
     #
     # DONE:
+    #   output folder
     #   Need to have some kind of argument parsing
     #   verbose level
     #   do we want to limit the number of messages retrieved
+    #   do we want to overwrite existing files
+    #   do we want to delete the read messages rather than just archiving them
+    #   do we want an option to flag what label we want to use for the attachments
 
     try:
         main()

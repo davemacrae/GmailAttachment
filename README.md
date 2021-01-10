@@ -1,6 +1,5 @@
 # GmailAttachment
 
-
 First follow API enable instructions at https://developers.google.com/gmail/api/quickstart/python
 
 You will need to get an API key prior to first running the application.

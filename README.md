@@ -2,6 +2,8 @@
 
 First follow API enable instructions at https://developers.google.com/gmail/api/quickstart/python
 
+API reference: https://googleapis.github.io/google-api-python-client/docs/
+
 You will need to get an API key prior to first running the application.
 
 ```

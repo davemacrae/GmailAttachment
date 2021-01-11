@@ -67,6 +67,8 @@ def login():
     # time.
 
     # TODO: What is the correct error handling here
+    #  We need to define where the credentials and token.pickle files are.
+    #  Default is in the same directory as the script.
 
     gmail_creds = None
 
@@ -121,7 +123,7 @@ def get_labels(service, labelName=None):
     return labelId
 
 
-def get_messages(service, label=None, no_messages=sys.maxsize):
+def get_messages(service, label=None, no_messages=10000):
     """
     We want to get a list of all messages (defined by a specific label if required)
     We should also only get unread messages.
@@ -318,7 +320,9 @@ def trash_message(service, msg_id):
 
 
 def getargs():
-    parser = argparse.ArgumentParser(description='This application downloads attachments from a GMAIL account')
+    parser = argparse.ArgumentParser(description=
+        'This application downloads attachments from a GMAIL account ' + 
+        'Copyright 2021 Dave MacRae dave@macrae.org.uk')
 
     parser.add_argument('--output', '-o', type=str,
                         help='Specify the target directory for downloads')

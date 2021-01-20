@@ -203,6 +203,16 @@ def get_message_content(service, msg_id, outputDir='./'):
         message = service.users().messages().get(userId=uid, id=msg_id).execute()
 
         for part in message['payload']['parts']:
+            """
+            There appears to be an edge case where a set of pictures are sent from an iPhone where
+            the pictures are in an unnamed attachment, i.e, the "part" has no filename but there are sub-parts.
+            
+            Instead of 
+                message.payload.parts.X.body.attachmentID
+            we need
+                message.payload,parts.X.body.parts.X.body.attachmentID
+            """
+
             if part['filename']:
                 if 'data' in part['body']:
                     data = part['body']['data']
@@ -222,6 +232,20 @@ def get_message_content(service, msg_id, outputDir='./'):
 
                 path = outputDir + os.path.basename(part['filename'])
                 save_file(path, file_data)
+            else:
+                if part['mimeType'] == 'multipart/related':
+                    for sub_part in part['parts']:
+                        if 'attachmentId' in sub_part['body']:
+                            att_id = sub_part['body']['attachmentId']
+                            att = service. \
+                                users(). \
+                                messages(). \
+                                attachments().get(userId=uid, messageId=msg_id, id=att_id).execute()
+
+                            data = att['data']
+                            file_data = base64.urlsafe_b64decode(data.encode('UTF-8'))
+                            path = outputDir + os.path.basename(sub_part['filename'])
+                            save_file(path, file_data)
 
     except errors.HttpError as error:
         print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)

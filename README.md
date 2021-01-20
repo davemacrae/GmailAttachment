@@ -27,7 +27,7 @@ optional arguments:
   --unread, -u          Only get unread messages from inbox, default is to get
                         all unread even if archived)
   --noclobber           Don't overwrite existing files
-
+  --rename              If --noclobber set, rename clashes rather than ignoring
 
 ```
 

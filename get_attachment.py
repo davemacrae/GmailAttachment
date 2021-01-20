@@ -164,7 +164,7 @@ def get_messages(service, label=None, no_messages=10000):
         results = service. \
             users(). \
             messages(). \
-            list(userId='me', labelIds=label, pageToken=None, maxResults=no_messages).\
+            list(userId='me', labelIds=label, pageToken=None, maxResults=no_messages). \
             execute()
 
         messages.extend(results.get('messages', []))
@@ -175,7 +175,7 @@ def get_messages(service, label=None, no_messages=10000):
             results = service. \
                 users(). \
                 messages(). \
-                list(userId='me', labelIds=label, pageToken=results.get('nextPageToken'), maxResults=no_messages).\
+                list(userId='me', labelIds=label, pageToken=results.get('nextPageToken'), maxResults=no_messages). \
                 execute()
             # extend the message list to include the new ones retrieved.
             messages.extend(results.get('messages', []))
@@ -196,8 +196,6 @@ def get_message_content(service, msg_id, outputDir='./'):
     :param msg_id: ID of Message containing attachment.
     :param outputDir:Directory for output
     """
-
-    global program_args
 
     uid = 'me'
 
@@ -223,27 +221,73 @@ def get_message_content(service, msg_id, outputDir='./'):
                 # we should do a basename on the filename to just get the bit we need.
 
                 path = outputDir + os.path.basename(part['filename'])
-                if program_args.verbose:
-                    print("Save File:", path)
-                try:
-                    if program_args.noclobber:
-                        # check if we should not overwrite
-                        if os.path.exists(path):
-                            if program_args.verbose:
-                                print(f"Not overwriting {path}")
-                                continue
-                    with open(path, 'wb') as f:
-                        f.write(file_data)
-                except OSError as err:
-                    print("OS error: {0}".format(err))
-                    sys.exit(1)
-                except Exception:
-                    print("Unexpected error:", sys.exc_info()[0])
-                    raise
+                save_file(path, file_data)
 
     except errors.HttpError as error:
         print(f'An error occurred in {inspect.stack()[0][3]}: %s' % error)
         sys.exit(1)
+
+
+def save_file(path, data):
+
+    """
+    Save file data
+
+    :param path: File path
+    :param data: data to be saved
+    """
+
+    global program_args
+
+    if program_args.verbose:
+        print("Save File:", path)
+    try:
+        if program_args.noclobber:
+            # check if we should not overwrite
+            if os.path.exists(path):
+                # now we need to determine if we can rename the incoming file
+                if program_args.rename:
+                    path = get_new_name(path)
+                    if program_args.verbose:
+                        print(f"Writing to new name: {path}")
+                else:
+                    if program_args.verbose:
+                        print(f"Not overwriting {path}")
+                        return
+        with open(path, 'wb') as f:
+            f.write(data)
+    except OSError as err:
+        print(f"OS error: {format(err)} in {inspect.stack()[0][3]}")
+        sys.exit(1)
+    except Exception:
+        print("Unexpected error in {inspect.stack()[0][3]}: %s", sys.exc_info()[0])
+        raise
+
+    pass
+
+
+def get_new_name(path):
+
+    """
+    We will take the path name supplied and append _NNN, starting with _001 and incrementing this until
+    we get to an unused file.
+
+    In the edge case where we reach _999 we will return None.
+
+    :param path: path name that we want to increment.
+
+    """
+
+    # First we need to get the root name and extension part of the path i.e fred.jpg -> fred and .jpg
+
+    (file_name, file_ext) = os.path.splitext(path)
+    suffix = 1
+    new_path = file_name + "_{0:03d}".format(suffix) + file_ext
+    while os.path.exists(new_path):
+        suffix = suffix + 1
+        new_path = file_name + "_{0:03d}".format(suffix) + file_ext
+
+    return new_path
 
 
 def mark_message_read(service, msg_id):
@@ -320,9 +364,8 @@ def trash_message(service, msg_id):
 
 
 def getargs():
-    parser = argparse.ArgumentParser(description=
-        'This application downloads attachments from a GMAIL account ' + 
-        'Copyright 2021 Dave MacRae dave@macrae.org.uk')
+    parser = argparse.ArgumentParser(description='This application downloads attachments from a GMAIL account',
+                                     epilog='Copyright 2021 Dave MacRae <dave@macrae.org.uk>')
 
     parser.add_argument('--output', '-o', type=str,
                         help='Specify the target directory for downloads')
@@ -342,6 +385,8 @@ def getargs():
                         help='Only get unread messages from inbox, default is to get all unread even if archived)')
     parser.add_argument('--noclobber', action='store_true',
                         help="Don't overwrite existing files")
+    parser.add_argument('--rename', action='store_true',
+                        help="If --noclobber set, rename clashes rather than ignoring")
 
     args = parser.parse_args()
 

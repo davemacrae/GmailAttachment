@@ -1,6 +1,5 @@
 #!/usr/bin/python3
 
-from __future__ import print_function
 import pickle
 import os
 import sys
@@ -70,9 +69,7 @@ def login(config_dir):
     """
     The file token.pickle stores the user's access and refresh tokens, and is
     created automatically when the authorization flow completes for the first
-    time.
-
-    TODO: What is the correct error handling here. Need to test what happens if auth fails.
+    time. credentials JSON file must exist.
 
     :param config_dir: Location of the configuration/credentials files
     """
@@ -82,22 +79,53 @@ def login(config_dir):
     credentials_file = config_dir + "credentials.json"
 
     if not os.path.exists(credentials_file):
-        print("Error: Cannot find credentials file " + credentials_file)
+        print(f"Error: Cannot find credentials file {credentials_file}")
         exit(1)
 
     if os.path.exists(pickle_file):
-        with open(pickle_file, "rb") as token:
-            gmail_creds = pickle.load(token)
-    # If there are no (valid) credentials available, let the user log in.
+        try:
+            with open(pickle_file, "rb") as token:
+                gmail_creds = pickle.load(token)
+        except OSError as err:
+            print("OS error: {0}".format(err))
+            sys.exit(1)
+        except Exception:
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
+
+# If there are no (valid) credentials available, let the user log in.
     if not gmail_creds or not gmail_creds.valid:
         if gmail_creds and gmail_creds.expired and gmail_creds.refresh_token:
-            gmail_creds.refresh(Request())
+            try:
+                gmail_creds.refresh(Request())
+            except OSError as err:
+                print("OS error: {0}".format(err))
+                sys.exit(1)
+            except Exception:
+                print("Unexpected error:", sys.exc_info()[0])
+                raise
         else:
-            flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
-            gmail_creds = flow.run_local_server(port=0)
+            try:
+                flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
+                gmail_creds = flow.run_local_server(port=0)
+            except OSError as err:
+                print("OS error: {0}".format(err))
+                sys.exit(1)
+            except Exception:
+                print("Unexpected error:", sys.exc_info()[0])
+                raise
+
         # Save the credentials for the next run
-        with open(pickle_file, "wb") as token:
-            pickle.dump(gmail_creds, token)
+        try:
+            with open(pickle_file, "wb") as token:
+                pickle.dump(gmail_creds, token)
+        except OSError as err:
+            print("OS error: {0}".format(err))
+            sys.exit(1)
+        except Exception:
+            print("Unexpected error:", sys.exc_info()[0])
+            raise
+
     return gmail_creds
 
 
@@ -245,23 +273,24 @@ def get_message_content(service, msg_id, outputDir="./"):
                 # we should do a basename on the filename to just get the bit we need.
 
                 path = outputDir + os.path.basename(part["filename"])
-                if PROGRAM_ARGS.verbose:
+                if PROGRAM_ARGS.verbose or PROGRAM_ARGS.dryrun:
                     print("Save File:", path)
-                try:
-                    if PROGRAM_ARGS.noclobber:
-                        # check if we should not overwrite
-                        if os.path.exists(path):
-                            if PROGRAM_ARGS.verbose:
-                                print(f"Not overwriting {path}")
-                                continue
-                    with open(path, "wb") as f:
-                        f.write(file_data)
-                except OSError as err:
-                    print("OS error: {0}".format(err))
-                    sys.exit(1)
-                except Exception:
-                    print("Unexpected error:", sys.exc_info()[0])
-                    raise
+                if not PROGRAM_ARGS.dryrun:
+                    try:
+                        if PROGRAM_ARGS.noclobber:
+                            # check if we should not overwrite
+                            if os.path.exists(path):
+                                if PROGRAM_ARGS.verbose:
+                                    print(f"Not overwriting {path}")
+                                    continue
+                        with open(path, "wb") as f:
+                            f.write(file_data)
+                    except OSError as err:
+                        print("OS error: {0}".format(err))
+                        sys.exit(1)
+                    except Exception:
+                        print("Unexpected error:", sys.exc_info()[0])
+                        raise
 
     except errors.HttpError as error:
         print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
@@ -280,25 +309,27 @@ def mark_message_read(service, msg_id):
     uid = "me"
     message = None
 
-    try:
-        message = (
-            service.users()
-            .messages()
-            .modify(userId=uid, id=msg_id, body={"removeLabelIds": ["UNREAD", "INBOX"]})
-            .execute()
-        )
-    except errors.HttpError as error:
-        print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
+    if not PROGRAM_ARGS.dryrun:
+        try:
+            message = (
+                service.users()
+                .messages()
+                .modify(userId=uid, id=msg_id, body={"removeLabelIds": ["UNREAD", "INBOX"]})
+                .execute()
+            )
+        except errors.HttpError as error:
+            print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
 
-    # need to check that the UNREAD label has been removed.
+        # need to check that the UNREAD label has been removed.
 
-    labelIDs = message.get("labelIds")
-    if "UNREAD" in labelIDs:
-        print("Something went wrong, label UNREAD still there")
+        labelIDs = message.get("labelIds")
+        if "UNREAD" in labelIDs:
+            print("Something went wrong, label UNREAD still there")
+        else:
+            if PROGRAM_ARGS.verbose:
+                print(f"Message {msg_id} marked as Read")
     else:
-        if PROGRAM_ARGS.verbose:
-            print(f"Message {msg_id} marked as Read")
-
+        print(f"Message {msg_id} will be marked as Read")
     return
 
 
@@ -329,10 +360,13 @@ def trash_message(service, msg_id):
     """
     uid = "me"
 
-    try:
-        service.users().messages().trash(userId=uid, id=msg_id).execute()
-    except errors.HttpError as error:
-        print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
+    if not PROGRAM_ARGS.dryrun:
+        try:
+            service.users().messages().trash(userId=uid, id=msg_id).execute()
+        except errors.HttpError as error:
+            print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
+    else:
+        print(f"Will Trash {msg_id}")
 
     return
 
@@ -379,6 +413,11 @@ def getargs():
         action="store_true",
         help="Trash messages at GMAIL rather than just archive",
     )
+    parser.add_argument(
+        "--dryrun",
+        action="store_true",
+        help="Don't actually do anything, just print out actions",
+    )
     parser.add_argument("--verbose", "-v", action="store_true", help="Verbose output")
     parser.add_argument(
         "--unread",
@@ -406,7 +445,6 @@ def getargs():
 
 
 if __name__ == "__main__":
-    # TODO:
     #
     # DONE:
     #   output folder

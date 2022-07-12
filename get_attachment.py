@@ -12,11 +12,11 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from google.auth.transport.requests import Request
 from apiclient import errors
 
-
 # If modifying these scopes, delete the file token.pickle.
 SCOPES = ["https://mail.google.com/"]
 
 global PROGRAM_ARGS
+MAX_INT = 2147483647  # to get around the 32/64 bit issue with sys.maxsize
 
 
 def main():
@@ -35,10 +35,14 @@ def main():
     PROGRAM_ARGS = getargs()
 
     outputDir = PROGRAM_ARGS.output if PROGRAM_ARGS.output else "."
-    label = PROGRAM_ARGS.label if PROGRAM_ARGS.label else "frame"
     outputDir = outputDir + "/"
 
-    service = build("gmail", "v1", credentials=login())
+    configDir = PROGRAM_ARGS.config if PROGRAM_ARGS.config else "."
+    configDir = configDir + "/"
+
+    label = PROGRAM_ARGS.label if PROGRAM_ARGS.label else "frame"
+
+    service = build("gmail", "v1", credentials=login(configDir))
     labelID = get_labels(service, labelName=label)
 
     messages = get_messages(service, labelID, no_messages=PROGRAM_ARGS.limit)
@@ -62,29 +66,37 @@ def main():
     return
 
 
-def login():
-    # The file token.pickle stores the user's access and refresh tokens, and is
-    # created automatically when the authorization flow completes for the first
-    # time.
+def login(config_dir):
+    """
+    The file token.pickle stores the user's access and refresh tokens, and is
+    created automatically when the authorization flow completes for the first
+    time.
 
-    # TODO: What is the correct error handling here
-    #  We need to define where the credentials and token.pickle files are.
-    #  Default is in the same directory as the script.
+    TODO: What is the correct error handling here. Need to test what happens if auth fails.
+
+    :param config_dir: Location of the configuration/credentials files
+    """
 
     gmail_creds = None
+    pickle_file = config_dir + "token.pickle"
+    credentials_file = config_dir + "credentials.json"
 
-    if os.path.exists("token.pickle"):
-        with open("token.pickle", "rb") as token:
+    if not os.path.exists(credentials_file):
+        print("Error: Cannot find credentials file " + credentials_file)
+        exit(1)
+
+    if os.path.exists(pickle_file):
+        with open(pickle_file, "rb") as token:
             gmail_creds = pickle.load(token)
     # If there are no (valid) credentials available, let the user log in.
     if not gmail_creds or not gmail_creds.valid:
         if gmail_creds and gmail_creds.expired and gmail_creds.refresh_token:
             gmail_creds.refresh(Request())
         else:
-            flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(credentials_file, SCOPES)
             gmail_creds = flow.run_local_server(port=0)
         # Save the credentials for the next run
-        with open("token.pickle", "wb") as token:
+        with open(pickle_file, "wb") as token:
             pickle.dump(gmail_creds, token)
     return gmail_creds
 
@@ -137,14 +149,14 @@ def get_messages(service, label=None, no_messages=10000):
 
     # Even if label is not specified, we want to only retrieve UNREAD messages
     # If "label" is not defined then we will retrieve all unread messages from the mailbox.
-    # Implemented: need to determine if we want to retrieve all UNREAD messages (which is the current behavior) or just
-    #  those that haven't been archived.
+    # Implemented: need to determine if we want to retrieve all UNREAD messages (which is the
+    # current behavior) or just those that haven't been archived.
     #  i.e. do we need to make INBOX part of the label list.
 
     if label is None:
         label = ["UNREAD", "INBOX"] if PROGRAM_ARGS.unread else ["UNREAD"]
     else:
-        label = [label, "UNREAD", "INBOX"] if PROGRAM_ARGS.unread else ["UNREAD"]
+        label = [label, "UNREAD", "INBOX"] if PROGRAM_ARGS.unread else [label, "UNREAD"]
 
     messages = []
 
@@ -229,7 +241,7 @@ def get_message_content(service, msg_id, outputDir="./"):
 
                 # it appears that filename can contain non-safe characters like "/", i.e. it has a full path
                 # this appears to be because the UNIX mail command includes the full path of the attachment as given:
-                #   mail -A ~/PycharmPrPojects/frame/ACF1083.jpg frame@macrae.org.uk
+                #   mail -A ~/PycharmPrProjects/frame/ACF1083.jpg frame@example.com
                 # we should do a basename on the filename to just get the bit we need.
 
                 path = outputDir + os.path.basename(part["filename"])
@@ -326,13 +338,20 @@ def trash_message(service, msg_id):
 
 
 def getargs():
+    """
+    We now need to parse the arguments list.
+    """
+
     parser = argparse.ArgumentParser(
         description="This application downloads attachments from a GMAIL account "
-        + "Copyright 2021 Dave MacRae dave@macrae.org.uk"
+                    + "Copyright 2021 Dave MacRae dave@macrae.org.uk"
     )
 
     parser.add_argument(
         "--output", "-o", type=str, help="Specify the target directory for downloads"
+    )
+    parser.add_argument(
+        "--config", type=str, help="Specify the directory containing config files"
     )
     parser.add_argument(
         "--label", type=str, help="Specify the target label for getting messages"
@@ -341,7 +360,7 @@ def getargs():
         "--limit",
         "-l",
         type=int,
-        default=sys.maxsize,
+        default=MAX_INT,
         help="limit the number of attachments downloaded",
     )
     parser.add_argument(
@@ -365,7 +384,7 @@ def getargs():
         "--unread",
         "-u",
         action="store_true",
-        help="Only get unread messages from inbox, default is to get all unread even if archived)",
+        help="Only get unread messages from inbox, default is to get all messages even if archived)",
     )
     parser.add_argument(
         "--noclobber", action="store_true", help="Don't overwrite existing files"
@@ -374,12 +393,12 @@ def getargs():
     args = parser.parse_args()
 
     # If "--output" is used and
-    # the selected output directory is an directory
+    # the selected output directory is a directory
     # and the directory is writable
     if (
-        args.output
-        and not os.path.isdir(args.output)
-        and os.access(args.output, os.W_OK | os.X_OK)
+            args.output
+            and not os.path.isdir(args.output)
+            and os.access(args.output, os.W_OK | os.X_OK)
     ):
         parser.error(f"Specified Output directory '{args.output}' does not exists")
 

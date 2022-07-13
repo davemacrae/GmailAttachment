@@ -51,7 +51,7 @@ def main():
             print("No unread messages found.")
     else:
         if PROGRAM_ARGS.verbose:
-            print("Found", len(messages), "Unread Message(s)")
+            print("Found", len(messages), "unread Message(s)")
         for message in messages:
             get_message_content(service, message["id"], outputDir)
             if PROGRAM_ARGS.delete:
@@ -67,7 +67,7 @@ def main():
 
 def login(config_dir):
     """
-    The file token.pickle stores the user's access and refresh tokens, and is
+    The file "token.pickle" stores the user's access and refresh tokens, and is
     created automatically when the authorization flow completes for the first
     time. credentials JSON file must exist.
 
@@ -251,46 +251,51 @@ def get_message_content(service, msg_id, outputDir="./"):
     try:
         message = service.users().messages().get(userId=uid, id=msg_id).execute()
 
-        for part in message["payload"]["parts"]:
-            if part["filename"]:
-                if "data" in part["body"]:
-                    data = part["body"]["data"]
-                else:
-                    att_id = part["body"]["attachmentId"]
-                    att = (
-                        service.users()
-                        .messages()
-                        .attachments()
-                        .get(userId=uid, messageId=msg_id, id=att_id)
-                        .execute()
-                    )
-                    data = att["data"]
-                file_data = base64.urlsafe_b64decode(data.encode("UTF-8"))
+        try:
+            for part in message["payload"]["parts"]:
+                if part["filename"]:
+                    if "data" in part["body"]:
+                        data = part["body"]["data"]
+                    else:
+                        att_id = part["body"]["attachmentId"]
+                        att = (
+                            service.users()
+                            .messages()
+                            .attachments()
+                            .get(userId=uid, messageId=msg_id, id=att_id)
+                            .execute()
+                        )
+                        data = att["data"]
+                    file_data = base64.urlsafe_b64decode(data.encode("UTF-8"))
 
-                # it appears that filename can contain non-safe characters like "/", i.e. it has a full path
-                # this appears to be because the UNIX mail command includes the full path of the attachment as given:
-                #   mail -A ~/PycharmPrProjects/frame/ACF1083.jpg frame@example.com
-                # we should do a basename on the filename to just get the bit we need.
+                    # it appears that filename can contain non-safe characters like "/", i.e. it has a full path
+                    # this appears to be because the UNIX mail command includes the full path of the
+                    # attachment as given:
+                    #   mail -A ~/PycharmPrProjects/frame/ACF1083.jpg frame@example.com
+                    # we should do a basename on the filename to just get the bit we need.
 
-                path = outputDir + os.path.basename(part["filename"])
-                if PROGRAM_ARGS.verbose or PROGRAM_ARGS.dryrun:
-                    print("Save File:", path)
-                if not PROGRAM_ARGS.dryrun:
-                    try:
-                        if PROGRAM_ARGS.noclobber:
-                            # check if we should not overwrite
-                            if os.path.exists(path):
-                                if PROGRAM_ARGS.verbose:
-                                    print(f"Not overwriting {path}")
-                                    continue
-                        with open(path, "wb") as f:
-                            f.write(file_data)
-                    except OSError as err:
-                        print("OS error: {0}".format(err))
-                        sys.exit(1)
-                    except Exception:
-                        print("Unexpected error:", sys.exc_info()[0])
-                        raise
+                    path = outputDir + os.path.basename(part["filename"])
+                    if PROGRAM_ARGS.verbose or PROGRAM_ARGS.dryrun:
+                        print("Save File:", path)
+                    if not PROGRAM_ARGS.dryrun:
+                        try:
+                            if PROGRAM_ARGS.noclobber:
+                                # check if we should not overwrite
+                                if os.path.exists(path):
+                                    if PROGRAM_ARGS.verbose:
+                                        print(f"Not overwriting {path}")
+                                        continue
+                            with open(path, "wb") as f:
+                                f.write(file_data)
+                        except OSError as err:
+                            print("OS error: {0}".format(err))
+                            sys.exit(1)
+                        except Exception:
+                            print("Unexpected error:", sys.exc_info()[0])
+                            raise
+        except KeyError:
+            if PROGRAM_ARGS.verbose:
+                print(f"Message {msg_id} didn't contain an attachment")
 
     except errors.HttpError as error:
         print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
@@ -385,6 +390,10 @@ def getargs():
         "--output", "-o", type=str, help="Specify the target directory for downloads"
     )
     parser.add_argument(
+        "--all", "-a", type=str, help="Get all messages irrespective of state. Helpful if you've sent yourself the "
+                                      "message."
+    )
+    parser.add_argument(
         "--config", type=str, help="Specify the directory containing config files"
     )
     parser.add_argument(
@@ -423,7 +432,7 @@ def getargs():
         "--unread",
         "-u",
         action="store_true",
-        help="Only get unread messages from inbox, default is to get all messages even if archived)",
+        help="Only get unread messages from inbox, default is to get all undread messages even if archived",
     )
     parser.add_argument(
         "--noclobber", action="store_true", help="Don't overwrite existing files"

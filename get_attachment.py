@@ -394,10 +394,6 @@ def getargs():
         "--output", "-o", type=str, help="Specify the target directory for downloads"
     )
     parser.add_argument(
-        "--all", "-a", type=str, help="Get all messages irrespective of state. Helpful if you've sent yourself the "
-                                      "message."
-    )
-    parser.add_argument(
         "--config", type=str, help="Specify the directory containing config files"
     )
     parser.add_argument(
@@ -441,6 +437,12 @@ def getargs():
     parser.add_argument(
         "--noclobber", action="store_true", help="Don't overwrite existing files"
     )
+    parser.add_argument(
+        "--all", "-a",
+        action="store_true",
+        help="Get all messages irrespective of state. Helpful if you've sent yourself the "
+             "message.",
+    )
 
     args = parser.parse_args()
 
@@ -453,6 +455,12 @@ def getargs():
             and os.access(args.output, os.W_OK | os.X_OK)
     ):
         parser.error(f"Specified Output directory '{args.output}' does not exists")
+    if (
+            args.config
+            and not os.path.isdir(args.config)
+            and not os.access(args.config, os.R_OK)
+    ):
+        parser.error(f"Specified Config directory '{args.config}' does not exists")
 
     return args
 

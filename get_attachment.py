@@ -452,7 +452,7 @@ def getargs():
     if (
             args.output
             and not os.path.isdir(args.output)
-            and os.access(args.output, os.W_OK | os.X_OK)
+            and not os.access(args.output, os.W_OK | os.X_OK)
     ):
         parser.error(f"Specified Output directory '{args.output}' does not exists")
     if (

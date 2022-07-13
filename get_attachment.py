@@ -183,6 +183,8 @@ def get_messages(service, label=None, no_messages=10000):
 
     if label is None:
         label = ["UNREAD", "INBOX"] if PROGRAM_ARGS.unread else ["UNREAD"]
+    elif PROGRAM_ARGS.all:
+        label = [label]
     else:
         label = [label, "UNREAD", "INBOX"] if PROGRAM_ARGS.unread else [label, "UNREAD"]
 
@@ -254,19 +256,20 @@ def get_message_content(service, msg_id, outputDir="./"):
         try:
             for part in message["payload"]["parts"]:
                 if part["filename"]:
-                    if "data" in part["body"]:
-                        data = part["body"]["data"]
-                    else:
-                        att_id = part["body"]["attachmentId"]
-                        att = (
-                            service.users()
-                            .messages()
-                            .attachments()
-                            .get(userId=uid, messageId=msg_id, id=att_id)
-                            .execute()
-                        )
-                        data = att["data"]
-                    file_data = base64.urlsafe_b64decode(data.encode("UTF-8"))
+                    if not PROGRAM_ARGS.dryrun:
+                        if "data" in part["body"]:
+                            data = part["body"]["data"]
+                        else:
+                            att_id = part["body"]["attachmentId"]
+                            att = (
+                                service.users()
+                                .messages()
+                                .attachments()
+                                .get(userId=uid, messageId=msg_id, id=att_id)
+                                .execute()
+                            )
+                            data = att["data"]
+                        file_data = base64.urlsafe_b64decode(data.encode("UTF-8"))
 
                     # it appears that filename can contain non-safe characters like "/", i.e. it has a full path
                     # this appears to be because the UNIX mail command includes the full path of the
@@ -348,10 +351,11 @@ def delete_message(service, msg_id):
     """
     uid = "me"
 
-    try:
-        service.users().messages().delete(userId=uid, id=msg_id).execute()
-    except errors.HttpError as error:
-        print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
+    if not PROGRAM_ARGS.dryrun:
+        try:
+            service.users().messages().delete(userId=uid, id=msg_id).execute()
+        except errors.HttpError as error:
+            print(f"An error occurred in {inspect.stack()[0][3]}: %s" % error)
 
     return
 
